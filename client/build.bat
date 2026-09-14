@@ -1,13 +1,79 @@
 @echo off
-chcp 65001 >nul
+chcp 936 >nul
+setlocal enabledelayedexpansion
+
 REM ============================================
-REM  ä¼ä¸šä»£ç†å®¡è®¡ç³»ç»Ÿ - å®¢æˆ·ç«¯æ‰“åŒ…è„šæœ¬
-REM  ä¾èµ–ï¼špip install pyinstaller
+REM  ÆóÒµ´úÀíÉó¼ÆÏµÍ³ - ¿Í»§¶Ë´ò°ü½Å±¾
+REM  ¹¦ÄÜ£º½« client.py ´ò°üÎªµ¥ÎÄ¼þ Windows ¿ÉÖ´ÐÐ³ÌÐò
+REM  ÒÀÀµ£ºPython 3.8+¡¢PyInstaller
 REM ============================================
+
+title ÆóÒµ´úÀíÉó¼ÆÏµÍ³ - ¿Í»§¶Ë´ò°ü
 cd /d "%~dp0"
 
-pyinstaller --onefile --windowed --name "ä¼ä¸šä»£ç†å®¡è®¡å®¢æˆ·ç«¯" client.py
+REM ---------- ¿ÉÅäÖÃÏî ----------
+set "APP_NAME=ÆóÒµ´úÀíÉó¼Æ¿Í»§¶Ë"
+set "ENTRY=client.py"
+set "ICON=client.ico"
+REM ------------------------------
+
+echo ============================================
+echo   ÆóÒµ´úÀíÉó¼ÆÏµÍ³ - ¿Í»§¶Ë´ò°ü
+echo ============================================
+echo.
+
+REM 1. ¼ì²é Python »·¾³
+echo [1/4] ¼ì²é Python »·¾³...
+python --version >nul 2>&1
+if errorlevel 1 (
+    echo [´íÎó] Î´¼ì²âµ½ Python£¬ÇëÏÈ°²×° Python 3.8+ ²¢¼ÓÈë PATH¡£
+    pause
+    exit /b 1
+)
+
+REM 2. ¼ì²é PyInstaller£¬È±Ê§Ôò×Ô¶¯°²×°
+echo [2/4] ¼ì²é PyInstaller...
+python -m PyInstaller --version >nul 2>&1
+if errorlevel 1 (
+    echo Î´°²×° PyInstaller£¬ÕýÔÚ×Ô¶¯°²×°...
+    python -m pip install pyinstaller
+    if errorlevel 1 (
+        echo [´íÎó] PyInstaller °²×°Ê§°Ü£¬ÇëÊÖ¶¯Ö´ÐÐ£ºpip install pyinstaller
+        pause
+        exit /b 1
+    )
+)
+
+REM 3. ÇåÀí¾ÉµÄ¹¹½¨²úÎï
+echo [3/4] ÇåÀí¾ÉµÄ¹¹½¨²úÎï...
+if exist "build"  rd /s /q "build"
+if exist "dist"   rd /s /q "dist"
+if exist "*.spec" del /q "*.spec" 2>nul
+
+REM 4. ´ò°ü£¨Èô´æÔÚÍ¼±êÎÄ¼þÔòÒ»²¢´ò°ü£©
+set "ICON_ARG="
+if exist "%ICON%" set "ICON_ARG=--icon=%ICON%"
+
+echo [4/4] ¿ªÊ¼´ò°ü£¨Ê×´Î´ò°ü¿ÉÄÜÐèÒª¼¸·ÖÖÓ£©...
+python -m PyInstaller --onefile --windowed --clean --noconfirm --name "%APP_NAME%" !ICON_ARG! "%ENTRY%"
+if errorlevel 1 (
+    echo [´íÎó] ´ò°üÊ§°Ü£¬Çë²é¿´ÉÏ·½´íÎóÐÅÏ¢¡£
+    pause
+    exit /b 1
+)
+
+REM Ð£Ñé²úÎï
+if not exist "dist\%APP_NAME%.exe" (
+    echo [´íÎó] Î´ÕÒµ½Éú³ÉµÄ¿ÉÖ´ÐÐÎÄ¼þ£ºdist\%APP_NAME%.exe
+    pause
+    exit /b 1
+)
 
 echo.
-echo æ‰“åŒ…å®Œæˆï¼Œå¯æ‰§è¡Œæ–‡ä»¶ä½äºŽ dist ç›®å½•ä¸‹ã€‚
+echo ============================================
+echo   ´ò°üÍê³É£¡
+echo   ¿ÉÖ´ÐÐÎÄ¼þ£ºdist\%APP_NAME%.exe
+echo ============================================
+echo.
 pause
+endlocal

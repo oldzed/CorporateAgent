@@ -1,0 +1,6 @@
+{
+  "users": [
+    {"username": "alice", "password_hash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92", "role": "admin"},
+    {"username": "bob",   "password_hash": "bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721", "role": "user"}
+  ]
+}
