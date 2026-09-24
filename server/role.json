@@ -1,0 +1,18 @@
+{
+  "roles": {
+    "admin": {
+      "blacklist": [
+        "bilibili\\.com"
+      ]
+    },
+    "user": {
+      "blacklist": [
+        "facebook\\.com",
+        "twitter\\.com",
+        "weibo\\.com",
+        "youtube\\.com",
+        "bilibili\\.com"
+      ]
+    }
+  }
+}
