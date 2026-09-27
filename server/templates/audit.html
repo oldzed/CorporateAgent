@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+{% block title %}审计查询{% endblock %}
+{% block body %}
+
+<!-- 筛选栏 -->
+<div class="card mb-3 shadow-sm">
+  <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label mb-1 small">起始时间</label>
+        <input type="datetime-local" class="form-control form-control-sm" id="f-start">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label mb-1 small">结束时间</label>
+        <input type="datetime-local" class="form-control form-control-sm" id="f-end">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label mb-1 small">客户端 IP</label>
+        <input type="text" class="form-control form-control-sm" id="f-ip" placeholder="模糊匹配">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label mb-1 small">用户名</label>
+        <input type="text" class="form-control form-control-sm" id="f-user">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label mb-1 small">域名</label>
+        <input type="text" class="form-control form-control-sm" id="f-host">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label mb-1 small">协议</label>
+        <select class="form-select form-select-sm" id="f-scheme">
+          <option value="">全部</option>
+          <option value="http">http</option>
+          <option value="https">https</option>
+        </select>
+      </div>
+      <div class="col-md-1">
+        <label class="form-label mb-1 small">Action</label>
+        <select class="form-select form-select-sm" id="f-action">
+          <option value="">全部</option>
+          <option value="allow">allow</option>
+          <option value="block">block</option>
+        </select>
+      </div>
+      <div class="col-md-2 d-grid gap-1">
+        <button class="btn btn-primary btn-sm" id="btn-search">查询</button>
+        <button class="btn btn-outline-secondary btn-sm" id="btn-reset">重置</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 统计条 -->
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <div class="text-muted small" id="stat">加载中…</div>
+  <button class="btn btn-outline-primary btn-sm" id="btn-refresh">🔄 刷新</button>
+</div>
+
+<!-- 结果表 -->
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0" id="flow-table">
+      <thead class="table-light">
+        <tr>
+          <th>时间</th><th>客户端 IP</th><th>用户</th><th>角色</th>
+          <th>方法</th><th>协议</th><th>域名</th><th>端口</th><th>URL</th>
+          <th>状态</th><th>动作</th><th>命中规则</th>
+        </tr>
+      </thead>
+      <tbody id="flow-body">
+          <tr><td colspan="12" class="text-center text-muted py-4">加载中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 分页 -->
+<nav class="mt-3">
+  <ul class="pagination pagination-sm justify-content-center" id="pager"></ul>
+</nav>
+
+<!-- 详情 Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">流量详情 #<span id="d-id"></span></h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <table class="table table-sm">
+          <tbody id="d-meta"></tbody>
+        </table>
+
+        <div class="accordion mt-3" id="bodyAcc">
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button collapsed" data-bs-toggle="collapse"
+                      data-bs-target="#reqBodyWrap">
+                请求体 <span class="badge bg-secondary ms-2" id="req-size">0 B</span>
+              </button>
+            </h2>
+            <div id="reqBodyWrap" class="accordion-collapse collapse"
+                 data-bs-parent="#bodyAcc">
+              <div class="accordion-body">
+                <div class="d-flex mb-2">
+                  <button class="btn btn-sm btn-outline-primary me-2"
+                          onclick="toggleHex('req')">切换 Hex</button>
+                  <button class="btn btn-sm btn-outline-secondary"
+                          onclick="copyBody('req')">复制</button>
+                </div>
+                <pre id="req-body" class="body-pre"></pre>
+              </div>
+            </div>
+          </div>
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button collapsed" data-bs-toggle="collapse"
+                      data-bs-target="#respBodyWrap">
+                响应体 <span class="badge bg-secondary ms-2" id="resp-size">0 B</span>
+              </button>
+            </h2>
+            <div id="respBodyWrap" class="accordion-collapse collapse"
+                 data-bs-parent="#bodyAcc">
+              <div class="accordion-body">
+                <div class="d-flex mb-2">
+                  <button class="btn btn-sm btn-outline-primary me-2"
+                          onclick="toggleHex('resp')">切换 Hex</button>
+                  <button class="btn btn-sm btn-outline-secondary"
+                          onclick="copyBody('resp')">复制</button>
+                </div>
+                <pre id="resp-body" class="body-pre"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const state = { page: 1, filters: {}, detail: null, hex: {req:false, resp:false} };
+
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function collectFilters(){
+  return {
+    start:    document.getElementById('f-start').value,
+    end:      document.getElementById('f-end').value,
+    ip:       document.getElementById('f-ip').value.trim(),
+    username: document.getElementById('f-user').value.trim(),
+    host:     document.getElementById('f-host').value.trim(),
+    scheme:   document.getElementById('f-scheme').value,
+    action:   document.getElementById('f-action').value,
+  };
+}
+
+function buildQS(){
+  const p = new URLSearchParams();
+  p.set('page', state.page);
+  for (const [k,v] of Object.entries(state.filters)) if (v) p.set(k,v);
+  return p.toString();
+}
+
+async function loadList(){
+  const r = await fetch('/api/flows?' + buildQS());
+  const d = await r.json();
+  if (!d.ok) return;
+  renderRows(d);
+  renderPager(d);
+  document.getElementById('stat').textContent =
+    `共 ${d.total} 条，第 ${d.page}/${d.total_pages} 页（每页 ${d.per_page} 条）`;
+}
+
+function renderRows(d){
+  const tb = document.getElementById('flow-body');
+  if (!d.rows.length){
+    tb.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-4">无数据</td></tr>';
+    return;
+  }
+    tb.innerHTML = d.rows.map(r => {
+    const badge = r.action === 'block'
+      ? '<span class="badge bg-danger">block</span>'
+      : '<span class="badge bg-success">allow</span>';
+    const stCls = r.status >= 400 ? 'text-danger fw-bold' : '';
+    const schBadge = r.scheme === 'https'
+      ? '<span class="badge bg-warning text-dark">https</span>'
+      : (r.scheme === 'http'
+          ? '<span class="badge bg-secondary">http</span>'
+          : '<span class="text-muted small">—</span>');
+    return `<tr data-id="${r.id}" style="cursor:pointer">
+      <td class="small">${esc(r.timestamp)}</td>
+      <td class="small">${esc(r.client_ip)}</td>
+      <td class="small">${esc(r.username)}</td>
+      <td class="small">${esc(r.role)}</td>
+      <td class="small">${esc(r.method)}</td>
+      <td class="small text-center">${schBadge}</td>
+      <td class="small">${esc(r.host)}</td>
+      <td class="small text-center">${esc(r.port)}</td>
+      <td class="small text-truncate" style="max-width:320px" title="${esc(r.url)}">${esc(r.url)}</td>
+      <td class="small text-center ${stCls}">${esc(r.status)}</td>
+      <td class="small text-center">${badge}</td>
+      <td class="small">${esc(r.rule_name)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPager(d){
+  const ul = document.getElementById('pager');
+  if (d.total_pages <= 1){ ul.innerHTML = ''; return; }
+  const cur = d.page, tp = d.total_pages;
+  let html = '';
+  const mk = (label, p, disabled=false, active=false) =>
+    `<li class="page-item ${disabled?'disabled':''} ${active?'active':''}">
+       <a class="page-link" href="#" data-page="${p}">${label}</a></li>`;
+  html += mk('«', 1, cur===1);
+  html += mk('上一页', cur-1, cur===1);
+  const start = Math.max(1, cur-2), end = Math.min(tp, cur+2);
+  for (let i=start; i<=end; i++) html += mk(i, i, false, i===cur);
+  html += mk('下一页', cur+1, cur===tp);
+  html += mk('»', tp, cur===tp);
+  ul.innerHTML = html;
+  ul.querySelectorAll('a.page-link').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const p = parseInt(a.dataset.page);
+      if (p && p !== state.page){ state.page = p; loadList(); }
+    });
+  });
+}
+
+document.getElementById('btn-search').addEventListener('click', () => {
+  state.page = 1;
+  state.filters = collectFilters();
+  loadList();
+});
+document.getElementById('btn-reset').addEventListener('click', () => {
+  ['f-start','f-end','f-ip','f-user','f-host'].forEach(id =>
+    document.getElementById(id).value = '');
+  document.getElementById('f-scheme').value = '';
+  document.getElementById('f-action').value = '';
+  state.page = 1; state.filters = {};
+  loadList();
+});
+document.getElementById('btn-refresh').addEventListener('click', () => loadList());
+
+document.getElementById('flow-body').addEventListener('dblclick', e => {
+  const tr = e.target.closest('tr');
+  if (!tr || !tr.dataset.id) return;
+  openDetail(tr.dataset.id);
+});
+
+async function openDetail(id){
+  const r = await fetch('/api/flows/' + id);
+  const d = await r.json();
+  if (!d.ok) return;
+  const row = d.row;
+  state.detail = row;
+  state.hex = {req:false, resp:false};
+
+  document.getElementById('d-id').textContent = row.id;
+  const meta = [
+    ['时间', row.timestamp], ['客户端 IP', row.client_ip],
+    ['用户名', row.username], ['角色', row.role],
+    ['方法', row.method], ['Scheme', row.scheme],
+    ['域名', row.host], ['端口', row.port],
+    ['URL', row.url], ['状态', row.status],
+    ['动作', row.action], ['命中规则', row.rule_name || '—'],
+    ['请求大小', row.req_size + ' B'], ['响应大小', row.resp_size + ' B'],
+    ['Content-Type', row.content_type || '—'],
+  ];
+  document.getElementById('d-meta').innerHTML = meta.map(([k,v]) =>
+    `<tr><th class="text-muted" style="width:140px">${k}</th>
+         <td>${esc(v)}</td></tr>`).join('');
+
+  const isHttpsTunnel = (row.scheme === 'https' && row.method === 'CONNECT');
+  document.getElementById('req-size').textContent  = isHttpsTunnel ? '—' : (row.req_body_size + ' B');
+  document.getElementById('resp-size').textContent = isHttpsTunnel ? '—' : (row.resp_body_size + ' B');
+    // 根据是否二进制控制"切换 Hex"按钮
+  ['req','resp'].forEach(w => {
+    const btn = document.querySelector(
+      `#${w}BodyWrap button[onclick="toggleHex('${w}')"]`);
+    if (btn) btn.style.display = row[w + '_body_binary'] ? 'none' : '';
+  });
+  renderBody('req');
+  renderBody('resp');
+
+  new bootstrap.Modal(document.getElementById('detailModal')).show();
+}
+
+function renderBody(which){
+  const row = state.detail;
+  if (!row) return;
+  const el = document.getElementById(which + '-body');
+
+  // 1) HTTPS 隧道
+  if (row.scheme === 'https' && row.method === 'CONNECT') {
+    el.innerHTML =
+      '<span class="text-muted fst-italic">' +
+      '⚠️ 该请求为 HTTPS 协议（TLS 加密隧道），代理无法记录请求体/响应体内容。' +
+      '</span>';
+    return;
+  }
+
+  const b64key   = which + '_body_b64';
+  const textkey  = which + '_body_text';
+  const binkey   = which + '_body_binary';
+  const mimekey  = which + '_body_mime_hint';
+
+  // 2) 空
+  if (!row[b64key]){
+    el.innerHTML = '<span class="text-muted">（空）</span>';
+    return;
+  }
+
+  const isBinary = !!row[binkey];
+  const mimeHint = row[mimekey];
+
+  // 3) 二进制：默认直接 Hex，禁止切文本
+  if (isBinary && !state.hex[which]) {
+    state.hex[which] = true;   // 自动切 Hex
+  }
+
+  // 4) 生成内容
+  if (state.hex[which]){
+    const bin = atob(row[b64key]);
+    let out = '';
+    const limit = Math.min(bin.length, 64 * 1024);
+    for (let i = 0; i < limit; i++){
+      out += bin.charCodeAt(i).toString(16).padStart(2, '0');
+      out += ((i + 1) % 16 === 0) ? '\n' : ' ';
+    }
+    if (bin.length > limit) out += '\n... (已截断，仅显示前 64KB)';
+    el.textContent = out;
+  } else {
+    el.textContent = row[textkey] != null ? row[textkey] : '（无文本内容）';
+  }
+
+  // 5) 顶部提示条
+  let hint = '';
+  if (isBinary){
+    const mimeTxt = mimeHint ? `识别为 ${mimeHint}` : '识别为二进制';
+    hint = `<div class="alert alert-secondary py-1 px-2 mb-2 small">
+      ⚠️ 该内容为二进制（${mimeTxt}），已自动切换 Hex 视图。
+      文本模式不可用。
+    </div>`;
+  }
+
+  // 在 pre 前插入提示（避免重复插入）
+  const parent = el.parentElement;
+  let old = parent.querySelector('.body-hint');
+  if (old) old.remove();
+  if (hint){
+    const div = document.createElement('div');
+    div.className = 'body-hint';
+    div.innerHTML = hint;
+    parent.insertBefore(div, el);
+  }
+}
+
+function toggleHex(which){
+  state.hex[which] = !state.hex[which];
+  renderBody(which);
+}
+
+function copyBody(which){
+  const el = document.getElementById(which + '-body');
+  navigator.clipboard.writeText(el.textContent);
+}
+</script>
+{% endblock %}

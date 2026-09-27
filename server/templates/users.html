@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}用户管理{% endblock %}
+{% block body %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0">用户列表</h5>
+  <div>
+    <button class="btn btn-outline-primary btn-sm" id="btn-refresh">🔄 刷新</button>
+    <button class="btn btn-success btn-sm" id="btn-new">➕ 新增用户</button>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <table class="table table-hover mb-0 align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>用户名</th><th style="width:220px">规则组</th>
+        <th style="width:180px">Clash 出网</th><th style="width:260px">操作</th>
+      </tr>
+    </thead>
+    <tbody id="user-body">
+      <tr><td colspan="4" class="text-center text-muted py-4">加载中…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 新增用户 Modal -->
+<div class="modal fade" id="addModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">新增用户</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">用户名</label>
+          <input class="form-control" id="a-username">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">密码（明文，后端 SHA256）</label>
+          <input type="password" class="form-control" id="a-password">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">规则组</label>
+          <select class="form-select" id="a-role"></select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Clash 出网权限</label>
+          <select class="form-select" id="a-proxy">
+            <option value="0">禁用（只能直连）</option>
+            <option value="1">允许走 Clash</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button class="btn btn-primary" id="a-save">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 改密码 Modal -->
+<div class="modal fade" id="pwdModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">修改密码 · <span id="p-username"></span></h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">新密码</label>
+        <input type="password" class="form-control" id="p-password">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button class="btn btn-primary" id="p-save">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let ROLES = [];
+let PWD_TARGET = null;
+
+function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function load(){
+  const r = await fetch('/api/users');
+  const d = await r.json();
+  if (!d.ok) return;
+  ROLES = d.roles || [];
+  const opts = ROLES.map(n => `<option value="${n}">${n}</option>`).join('');
+
+  const tb = document.getElementById('user-body');
+  if (!d.users.length){
+    tb.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">暂无用户</td></tr>';
+    return;
+  }
+  tb.innerHTML = d.users.map(u => `
+    <tr data-name="${esc(u.username)}">
+      <td><strong>${esc(u.username)}</strong></td>
+      <td>
+        <select class="form-select form-select-sm row-role">${opts}</select>
+      </td>
+      <td>
+        <select class="form-select form-select-sm row-proxy">
+          <option value="0">禁用</option>
+          <option value="1">允许</option>
+        </select>
+      </td>
+      <td>
+        <button class="btn btn-sm btn-outline-primary btn-save-role">保存归属/权限</button>
+        <button class="btn btn-sm btn-outline-secondary btn-pwd">改密码</button>
+        <button class="btn btn-sm btn-outline-danger btn-del">删除</button>
+      </td>
+    </tr>`).join('');
+
+  // 填初值
+  tb.querySelectorAll('tr').forEach(tr => {
+    const name = tr.dataset.name;
+    const u = d.users.find(x => x.username === name);
+    tr.querySelector('.row-role').value = u.role;
+    tr.querySelector('.row-proxy').value = String(u.proxy);
+  });
+}
+
+document.getElementById('btn-refresh').addEventListener('click', load);
+
+document.getElementById('btn-new').addEventListener('click', () => {
+  document.getElementById('a-username').value = '';
+  document.getElementById('a-password').value = '';
+  document.getElementById('a-role').innerHTML =
+    ROLES.map(n => `<option value="${n}">${n}</option>`).join('');
+  document.getElementById('a-proxy').value = '0';
+  new bootstrap.Modal(document.getElementById('addModal')).show();
+});
+
+document.getElementById('a-save').addEventListener('click', async () => {
+  const body = {
+    username: document.getElementById('a-username').value.trim(),
+    password: document.getElementById('a-password').value,
+    role:     document.getElementById('a-role').value,
+    proxy:    parseInt(document.getElementById('a-proxy').value, 10),
+  };
+  const r = await fetch('/api/users', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  const d = await r.json();
+  if (d.ok){ bootstrap.Modal.getInstance(document.getElementById('addModal')).hide(); load(); }
+  else alert(d.reason || '失败');
+});
+
+document.getElementById('user-body').addEventListener('click', async e => {
+  const tr = e.target.closest('tr'); if (!tr) return;
+  const name = tr.dataset.name;
+
+  if (e.target.classList.contains('btn-del')){
+    if (!confirm(`确认删除用户 ${name}？`)) return;
+    const r = await fetch('/api/users/' + encodeURIComponent(name), {method:'DELETE'});
+    const d = await r.json();
+    if (d.ok) load(); else alert(d.reason || '失败');
+  }
+  else if (e.target.classList.contains('btn-save-role')){
+    const role = tr.querySelector('.row-role').value;
+    const proxy = parseInt(tr.querySelector('.row-proxy').value, 10);
+    const r = await fetch('/api/users/' + encodeURIComponent(name), {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({role, proxy}),
+    });
+    const d = await r.json();
+    if (d.ok) alert('已保存，立即生效'); else alert(d.reason || '失败');
+  }
+  else if (e.target.classList.contains('btn-pwd')){
+    PWD_TARGET = name;
+    document.getElementById('p-username').textContent = name;
+    document.getElementById('p-password').value = '';
+    new bootstrap.Modal(document.getElementById('pwdModal')).show();
+  }
+});
+
+document.getElementById('p-save').addEventListener('click', async () => {
+  const pwd = document.getElementById('p-password').value;
+  if (!pwd){ alert('密码不能为空'); return; }
+  const r = await fetch('/api/users/' + encodeURIComponent(PWD_TARGET) + '/password', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({password: pwd}),
+  });
+  const d = await r.json();
+  if (d.ok){
+    bootstrap.Modal.getInstance(document.getElementById('pwdModal')).hide();
+    alert('密码已更新');
+  } else alert(d.reason || '失败');
+});
+
+load();
+</script>
+{% endblock %}

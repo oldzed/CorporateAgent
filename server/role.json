@@ -1,16 +1,16 @@
 {
   "roles": {
-    "admin": {
-      "blacklist": [
-        "bilibili\\.com"
-      ]
-    },
     "user": {
       "blacklist": [
         "facebook\\.com",
         "twitter\\.com",
         "weibo\\.com",
         "youtube\\.com",
+        "baidu\\.com"
+      ]
+    },
+    "test": {
+      "blacklist": [
         "bilibili\\.com"
       ]
     }

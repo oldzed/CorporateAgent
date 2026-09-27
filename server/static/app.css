@@ -1,0 +1,16 @@
+body { font-size: 14px; }
+.navbar-brand { font-weight: 600; letter-spacing: .5px; }
+.body-pre {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 10px;
+  max-height: 400px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+.card { border-radius: 8px; }
+table.table-sm td, table.table-sm th { vertical-align: middle; }

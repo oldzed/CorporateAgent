@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}登录{% endblock %}
+{% block body %}
+<div class="row justify-content-center" style="margin-top:10vh">
+  <div class="col-md-4 col-lg-3">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h4 class="card-title mb-4 text-center">管理后台登录</h4>
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label">用户名</label>
+            <input class="form-control" name="username" autofocus required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">密码</label>
+            <input type="password" class="form-control" name="password" required>
+          </div>
+          <button class="btn btn-primary w-100">登 录</button>
+        </form>
+      </div>
+    </div>
+    <div class="text-center text-muted small mt-3">
+      仅限管理员访问，会话 2 小时过期
+    </div>
+  </div>
+</div>
+{% endblock %}

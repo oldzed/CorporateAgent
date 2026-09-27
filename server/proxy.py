@@ -185,13 +185,14 @@ def init_db():
 
 def create_session(username, role, client_ip):
     sid = secrets.token_hex(16)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = db_conn()
     try:
         conn.execute(
             "INSERT INTO sessions (session_id, username, role, client_ip, "
             "login_time, last_seen, status, use_upstream_proxy) "
-            "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'online', 0)",
-            (sid, username, role, client_ip))
+            "VALUES (?, ?, ?, ?, ?, ?, 'online', 0)",
+            (sid, username, role, client_ip, now, now))
         conn.commit()
         return sid
     finally:
@@ -248,12 +249,13 @@ def set_session_upstream_proxy(session_id, enabled):
 
 
 def touch_session(session_id):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = db_conn()
     try:
         conn.execute(
-            "UPDATE sessions SET last_seen=CURRENT_TIMESTAMP "
+            "UPDATE sessions SET last_seen=? "
             "WHERE session_id=? AND status='online'",
-            (session_id,))
+            (now, session_id))
         conn.commit()
     finally:
         conn.close()
@@ -289,13 +291,15 @@ def query_sessions(online_only=False):
 
 
 def cleanup_timeout_sessions():
+    from datetime import timedelta
+    threshold = (datetime.now() - timedelta(seconds=PING_TIMEOUT)
+                 ).strftime("%Y-%m-%d %H:%M:%S")
     conn = db_conn()
     try:
         cur = conn.execute(
             "UPDATE sessions SET status='offline' "
-            "WHERE status='online' "
-            "AND (strftime('%s','now') - strftime('%s', last_seen)) > ?",
-            (PING_TIMEOUT,))
+            "WHERE status='online' AND last_seen < ?",
+            (threshold,))
         conn.commit()
         if cur.rowcount:
             log_queue.put(f"[清理] {cur.rowcount} 个超时会话已置 offline\n")
@@ -363,6 +367,8 @@ _audit_thread = None
 
 
 def audit_record(flow: dict):
+    if "timestamp" not in flow:
+        flow["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     audit_queue.put(flow)
 
 
@@ -389,12 +395,12 @@ def _flush_flows(rows):
     conn = db_conn()
     try:
         conn.executemany(
-            "INSERT INTO flows (session_id, client_ip, username, role, method, "
-            "scheme, host, port, url, status, action, rule_id, rule_name, "
+            "INSERT INTO flows (timestamp, session_id, client_ip, username, role, "
+            "method, scheme, host, port, url, status, action, rule_id, rule_name, "
             "req_size, resp_size, req_body, resp_body, content_type) "
-            "VALUES (:session_id, :client_ip, :username, :role, :method, :scheme, "
-            ":host, :port, :url, :status, :action, :rule_id, :rule_name, "
-            ":req_size, :resp_size, :req_body, :resp_body, :content_type)",
+            "VALUES (:timestamp, :session_id, :client_ip, :username, :role, "
+            ":method, :scheme, :host, :port, :url, :status, :action, :rule_id, "
+            ":rule_name, :req_size, :resp_size, :req_body, :resp_body, :content_type)",
             rows)
         conn.commit()
     except Exception as e:
@@ -484,6 +490,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
     def handle_request(self):
         if self.path == "/__auth__" and self.command == "POST":
             self.handle_auth()
+            return
+        if self.path == "/__reload__" and self.command == "POST":
+            self.handle_reload()
             return
         if self.path == "/__ping__" and self.command == "POST":
             self.handle_ping()
@@ -595,9 +604,10 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                     elif status == "kicked":
                         reason = "kicked"
                     elif status == "online":
+                        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         conn.execute(
-                            "UPDATE sessions SET last_seen=CURRENT_TIMESTAMP "
-                            "WHERE session_id=?", (sid,))
+                            "UPDATE sessions SET last_seen=? "
+                            "WHERE session_id=?", (now, sid))
                         conn.commit()
                         ok = True
                         reason = "ok"
@@ -668,6 +678,23 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             set_session_upstream_proxy(sid, False)
             write_log(client_ip, "SETPROXY", sess["username"], "OFF")
             self._json_resp(200, {"ok": True, "enabled": False})
+
+
+    # ---------- role.json 热加载 ----------
+    def handle_reload(self):
+        # 只允许本机访问（Web 和 proxy 在同一台机器）
+        if self.client_address[0] not in ("127.0.0.1", "::1"):
+            self._json_resp(403, {"ok": False, "reason": "forbidden"})
+            return
+        try:
+            role.load_roles("role.json")
+            # user.json 每次请求都会重新读取，无需重载
+            self._json_resp(200, {"ok": True, "msg": "role.json 已重新加载"})
+            write_log("127.0.0.1", "RELOAD", "role.json", "OK")
+        except Exception as e:
+            self._json_resp(500, {"ok": False, "reason": str(e)})
+            write_log("127.0.0.1", "RELOAD", "role.json", "FAIL")
+
 
     # ---------- HTTP 代理转发 ----------
     def _proxy_http(self, sess):
@@ -1287,6 +1314,8 @@ class ServerGUI:
 
     def run(self):
         self.root.mainloop()
+
+
 
 
 

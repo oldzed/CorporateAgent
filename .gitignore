@@ -8,6 +8,9 @@ venv/
 # 审计数据库（运行时生成）
 server/audit.db
 
+# 密钥（不应入库）
+server/secret.key
+
 # PyInstaller 构建产物
 build/
 dist/

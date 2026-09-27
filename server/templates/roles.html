@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}规则组{% endblock %}
+{% block body %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0">规则组（黑名单正则）</h5>
+  <div>
+    <button class="btn btn-outline-primary btn-sm" id="btn-refresh">🔄 刷新</button>
+    <button class="btn btn-success btn-sm" id="btn-new">➕ 新增规则组</button>
+    <button class="btn btn-warning btn-sm" id="btn-reload">⚡ 重载到代理</button>
+  </div>
+</div>
+
+<div id="alert-zone"></div>
+
+<div id="roles-wrap" class="row g-3"></div>
+
+<!-- 新增 Modal -->
+<div class="modal fade" id="addModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">新增规则组</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">组名（字母/数字/下划线）</label>
+          <input class="form-control" id="a-name">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">黑名单正则（一行一个）</label>
+          <textarea class="form-control" id="a-blacklist" rows="6"
+                    placeholder="bilibili\.com&#10;youtube\.com"></textarea>
+        </div>
+        <div class="small text-muted">示例：<code>ads\.example\.com</code> 会匹配 host 里含 ads.example.com 的请求。</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button class="btn btn-primary" id="a-save">创建</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function alertBox(msg, type='success'){
+  document.getElementById('alert-zone').innerHTML =
+    `<div class="alert alert-${type} alert-dismissible fade show">${esc(msg)}
+       <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+}
+
+async function load(){
+  const r = await fetch('/api/roles');
+  const d = await r.json();
+  if (!d.ok) return;
+  const wrap = document.getElementById('roles-wrap');
+  if (!d.roles.length){
+    wrap.innerHTML = '<div class="col-12 text-muted text-center py-4">暂无规则组</div>';
+    return;
+  }
+  wrap.innerHTML = d.roles.map(g => `
+    <div class="col-md-6 col-lg-4" data-name="${esc(g.name)}">
+      <div class="card shadow-sm h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>${esc(g.name)}</strong>
+          <span class="badge bg-info text-dark">${g.user_count} 用户</span>
+        </div>
+        <div class="card-body">
+          <label class="form-label small text-muted mb-1">黑名单正则</label>
+          <textarea class="form-control font-monospace small row-blacklist"
+                    rows="8">${g.blacklist.map(esc).join('\n')}</textarea>
+        </div>
+        <div class="card-footer d-flex justify-content-between">
+          <button class="btn btn-sm btn-primary btn-save">保存</button>
+          <button class="btn btn-sm btn-outline-danger btn-del">删除组</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+document.getElementById('btn-refresh').addEventListener('click', load);
+
+document.getElementById('roles-wrap').addEventListener('click', async e => {
+  const card = e.target.closest('.card'); if (!card) return;
+  const name = card.closest('[data-name]').dataset.name;
+
+  if (e.target.classList.contains('btn-save')){
+    const txt = card.querySelector('.row-blacklist').value;
+    const blacklist = txt.split('\n').map(s => s.trim()).filter(Boolean);
+    const r = await fetch('/api/roles/' + encodeURIComponent(name), {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({blacklist}),
+    });
+    const d = await r.json();
+    if (d.ok){
+      alertBox(`规则组「${name}」已保存到 role.json。<strong>点击右上角 ⚡ 重载到代理</strong>才会生效。`, 'warning');
+      load();
+    } else alertBox(d.reason || '保存失败', 'danger');
+  }
+
+  else if (e.target.classList.contains('btn-del')){
+    const cnt = card.querySelector('.badge').textContent;
+    if (!confirm(`删除规则组「${name}」将同时删除该组下的所有用户（${cnt}）。是否继续？`)) return;
+    const r = await fetch('/api/roles/' + encodeURIComponent(name), {method:'DELETE'});
+    const d = await r.json();
+    if (d.ok){
+      alertBox(`已删除规则组「${name}」，并移除 ${d.removed_users} 个用户。`, 'success');
+      load();
+    } else alertBox(d.reason || '删除失败', 'danger');
+  }
+});
+
+document.getElementById('btn-new').addEventListener('click', () => {
+  document.getElementById('a-name').value = '';
+  document.getElementById('a-blacklist').value = '';
+  new bootstrap.Modal(document.getElementById('addModal')).show();
+});
+
+document.getElementById('a-save').addEventListener('click', async () => {
+  const name = document.getElementById('a-name').value.trim();
+  const blacklist = document.getElementById('a-blacklist').value
+                      .split('\n').map(s => s.trim()).filter(Boolean);
+  if (!name){ alert('组名必填'); return; }
+  const r = await fetch('/api/roles', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name, blacklist}),
+  });
+  const d = await r.json();
+  if (d.ok){
+    bootstrap.Modal.getInstance(document.getElementById('addModal')).hide();
+    alertBox(`规则组「${name}」已创建。记得点击 ⚡ 重载到代理。`, 'warning');
+    load();
+  } else alertBox(d.reason || '创建失败', 'danger');
+});
+
+document.getElementById('btn-reload').addEventListener('click', async () => {
+  const r = await fetch('/admin/reload', {method:'POST'});
+  const d = await r.json();
+  if (d.ok) alertBox('✅ 已通知代理重载 role.json，新规则已生效。', 'success');
+  else alertBox('❌ ' + (d.reason || '重载失败'), 'danger');
+});
+
+load();
+</script>
+{% endblock %}
