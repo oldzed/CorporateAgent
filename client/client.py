@@ -174,12 +174,14 @@ def _heartbeat_loop(stop_evt, on_kicked):
 
 # ========== 转发处理器 ==========
 class ForwardHandler(http.server.BaseHTTPRequestHandler):
+
     def do_GET(self):    self.forward()
     def do_POST(self):   self.forward()
     def do_PUT(self):    self.forward()
     def do_DELETE(self): self.forward()
 
     def forward(self):
+
         content_length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(content_length) if content_length else None
 

@@ -11,7 +11,7 @@
     },
     "test": {
       "blacklist": [
-        "bilibili\\.com"
+        "stu\\.edu\\.cn"
       ]
     }
   }
